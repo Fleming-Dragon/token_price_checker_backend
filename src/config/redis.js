@@ -1,4 +1,4 @@
-const Redis = require('ioredis');
+const Redis = require("ioredis");
 
 class RedisConnection {
   constructor() {
@@ -8,44 +8,64 @@ class RedisConnection {
 
   async connect() {
     if (this.isConnected && this.client) {
-      console.log('🔗 Redis already connected');
+      console.log("🔗 Redis already connected");
       return this.client;
     }
 
     try {
-      const redisConfig = {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT) || 6379,
-        password: process.env.REDIS_PASSWORD || undefined,
-        db: parseInt(process.env.REDIS_DB) || 0,
-        retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-        keepAlive: 30000,
-        connectTimeout: 10000,
-        commandTimeout: 5000
-      };
+      // Check if we have a Redis URL (for hosted services with SSL)
+      const redisUrl = process.env.REDIS_URL;
 
-      this.client = new Redis(redisConfig);
+      let redisConfig;
+
+      if (redisUrl) {
+        // Use the full URL for hosted services (supports SSL)
+        redisConfig = {
+          retryDelayOnFailover: 100,
+          maxRetriesPerRequest: 3,
+          lazyConnect: true,
+          keepAlive: 30000,
+          connectTimeout: 10000,
+          commandTimeout: 5000,
+          // Enable TLS for rediss:// URLs
+          tls: redisUrl.startsWith("rediss://") ? {} : undefined,
+        };
+        this.client = new Redis(redisUrl, redisConfig);
+      } else {
+        // Fallback to individual config parameters for local development
+        redisConfig = {
+          host: process.env.REDIS_HOST || "localhost",
+          port: parseInt(process.env.REDIS_PORT) || 6379,
+          password: process.env.REDIS_PASSWORD || undefined,
+          db: parseInt(process.env.REDIS_DB) || 0,
+          retryDelayOnFailover: 100,
+          maxRetriesPerRequest: 3,
+          lazyConnect: true,
+          keepAlive: 30000,
+          connectTimeout: 10000,
+          commandTimeout: 5000,
+        };
+        this.client = new Redis(redisConfig);
+      }
 
       // Connection events
-      this.client.on('connect', () => {
-        console.log('🎯 Redis connected successfully');
+      this.client.on("connect", () => {
+        console.log("🎯 Redis connected successfully");
         this.isConnected = true;
       });
 
-      this.client.on('error', (error) => {
-        console.error('❌ Redis connection error:', error);
+      this.client.on("error", (error) => {
+        console.error("❌ Redis connection error:", error);
         this.isConnected = false;
       });
 
-      this.client.on('close', () => {
-        console.log('🔌 Redis connection closed');
+      this.client.on("close", () => {
+        console.log("🔌 Redis connection closed");
         this.isConnected = false;
       });
 
-      this.client.on('reconnecting', () => {
-        console.log('🔄 Redis reconnecting...');
+      this.client.on("reconnecting", () => {
+        console.log("🔄 Redis reconnecting...");
       });
 
       // Connect to Redis
@@ -53,7 +73,7 @@ class RedisConnection {
 
       return this.client;
     } catch (error) {
-      console.error('❌ Redis connection failed:', error);
+      console.error("❌ Redis connection failed:", error);
       throw error;
     }
   }
@@ -63,7 +83,7 @@ class RedisConnection {
       await this.client.quit();
       this.client = null;
       this.isConnected = false;
-      console.log('🔌 Redis disconnected gracefully');
+      console.log("🔌 Redis disconnected gracefully");
     }
   }
 
@@ -74,14 +94,14 @@ class RedisConnection {
   getConnectionStatus() {
     return {
       isConnected: this.isConnected,
-      status: this.client ? this.client.status : 'not initialized'
+      status: this.client ? this.client.status : "not initialized",
     };
   }
 
   // Cache helper methods
   async set(key, value, ttl = null) {
     if (!this.client || !this.isConnected) {
-      throw new Error('Redis client not connected');
+      throw new Error("Redis client not connected");
     }
 
     const serializedValue = JSON.stringify(value);
@@ -95,7 +115,7 @@ class RedisConnection {
 
   async get(key) {
     if (!this.client || !this.isConnected) {
-      throw new Error('Redis client not connected');
+      throw new Error("Redis client not connected");
     }
 
     const value = await this.client.get(key);
@@ -104,7 +124,7 @@ class RedisConnection {
 
   async del(key) {
     if (!this.client || !this.isConnected) {
-      throw new Error('Redis client not connected');
+      throw new Error("Redis client not connected");
     }
 
     return await this.client.del(key);
@@ -112,7 +132,7 @@ class RedisConnection {
 
   async exists(key) {
     if (!this.client || !this.isConnected) {
-      throw new Error('Redis client not connected');
+      throw new Error("Redis client not connected");
     }
 
     return await this.client.exists(key);
@@ -120,7 +140,7 @@ class RedisConnection {
 
   async flushall() {
     if (!this.client || !this.isConnected) {
-      throw new Error('Redis client not connected');
+      throw new Error("Redis client not connected");
     }
 
     return await this.client.flushall();

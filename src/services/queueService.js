@@ -1,6 +1,6 @@
-const { Queue, Worker } = require('bullmq');
-const Redis = require('ioredis');
-const pRetry = require('p-retry');
+const { Queue, Worker } = require("bullmq");
+const Redis = require("ioredis");
+const pRetry = require("p-retry");
 
 class QueueService {
   constructor() {
@@ -13,32 +13,45 @@ class QueueService {
   async initialize() {
     try {
       // Create Redis connection for BullMQ
-      this.connection = new Redis({
-        host: process.env.BULLMQ_REDIS_HOST || 'localhost',
-        port: parseInt(process.env.BULLMQ_REDIS_PORT) || 6379,
-        password: process.env.BULLMQ_REDIS_PASSWORD || undefined,
-        maxRetriesPerRequest: 3,
-        retryDelayOnFailover: 100
-      });
+      const redisUrl = process.env.REDIS_URL;
+
+      if (redisUrl) {
+        // Use the full URL for hosted services (supports SSL)
+        this.connection = new Redis(redisUrl, {
+          maxRetriesPerRequest: 3,
+          retryDelayOnFailover: 100,
+          // Enable TLS for rediss:// URLs
+          tls: redisUrl.startsWith("rediss://") ? {} : undefined,
+        });
+      } else {
+        // Fallback to individual config parameters for local development
+        this.connection = new Redis({
+          host: process.env.BULLMQ_REDIS_HOST || "localhost",
+          port: parseInt(process.env.BULLMQ_REDIS_PORT) || 6379,
+          password: process.env.BULLMQ_REDIS_PASSWORD || undefined,
+          maxRetriesPerRequest: 3,
+          retryDelayOnFailover: 100,
+        });
+      }
 
       // Create price collection queue
-      this.priceQueue = new Queue('price-collection', {
+      this.priceQueue = new Queue("price-collection", {
         connection: this.connection,
         defaultJobOptions: {
           removeOnComplete: 100,
           removeOnFail: 50,
           attempts: 3,
           backoff: {
-            type: 'exponential',
-            delay: 2000
-          }
-        }
+            type: "exponential",
+            delay: 2000,
+          },
+        },
       });
 
       this.isInitialized = true;
-      console.log('🎯 Queue service initialized successfully');
+      console.log("🎯 Queue service initialized successfully");
     } catch (error) {
-      console.error('❌ Queue service initialization failed:', error);
+      console.error("❌ Queue service initialization failed:", error);
       throw error;
     }
   }
@@ -46,12 +59,12 @@ class QueueService {
   // Create worker (should be called in separate process)
   createWorker() {
     if (!this.connection) {
-      throw new Error('Queue service not initialized');
+      throw new Error("Queue service not initialized");
     }
 
     this.worker = new Worker(
-      'price-collection',
-      async(job) => {
+      "price-collection",
+      async (job) => {
         return await this.processPriceCollectionJob(job);
       },
       {
@@ -59,37 +72,37 @@ class QueueService {
         concurrency: parseInt(process.env.WORKER_CONCURRENCY) || 5,
         limiter: {
           max: parseInt(process.env.ALCHEMY_RATE_LIMIT) || 100,
-          duration: 60000 // per minute
-        }
+          duration: 60000, // per minute
+        },
       }
     );
 
     // Worker event handlers
-    this.worker.on('completed', (job) => {
+    this.worker.on("completed", (job) => {
       console.log(`✅ Job ${job.id} completed successfully`);
     });
 
-    this.worker.on('failed', (job, err) => {
+    this.worker.on("failed", (job, err) => {
       console.error(`❌ Job ${job.id} failed:`, err);
     });
 
-    this.worker.on('progress', (job, progress) => {
+    this.worker.on("progress", (job, progress) => {
       console.log(`📊 Job ${job.id} progress: ${progress}%`);
     });
 
-    console.log('👷 Worker created and listening for jobs');
+    console.log("👷 Worker created and listening for jobs");
     return this.worker;
   }
 
   // Add price collection job to queue
   async addPriceCollectionJob(data) {
     if (!this.priceQueue) {
-      throw new Error('Queue not initialized');
+      throw new Error("Queue not initialized");
     }
 
-    const job = await this.priceQueue.add('collect-historical-prices', data, {
+    const job = await this.priceQueue.add("collect-historical-prices", data, {
       priority: 1,
-      delay: 1000 // Start after 1 second
+      delay: 1000, // Start after 1 second
     });
 
     console.log(
@@ -129,7 +142,7 @@ class QueueService {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error('❌ Batch processing failed:', error);
+        console.error("❌ Batch processing failed:", error);
         failed += batch.length;
       }
     }
@@ -140,7 +153,7 @@ class QueueService {
       totalTimestamps: timestamps.length,
       successful,
       failed,
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
     };
 
     console.log(`✅ Job ${job.id} completed:`, result);
@@ -149,8 +162,8 @@ class QueueService {
 
   // Process a batch of timestamps
   async processBatch(token, network, timestamps, job) {
-    const TokenPrice = require('../models/TokenPrice');
-    const alchemyConnection = require('../config/alchemy');
+    const TokenPrice = require("../models/TokenPrice");
+    const alchemyConnection = require("../config/alchemy");
 
     for (const timestamp of timestamps) {
       try {
@@ -158,7 +171,7 @@ class QueueService {
         const existingPrice = await TokenPrice.findOne({
           token: token.toLowerCase(),
           network: network.toLowerCase(),
-          timestamp: timestamp
+          timestamp: timestamp,
         });
 
         if (existingPrice) {
@@ -168,7 +181,7 @@ class QueueService {
 
         // Fetch price with retry logic
         const priceData = await pRetry(
-          async() => {
+          async () => {
             return await this.fetchHistoricalPrice(token, network, timestamp);
           },
           {
@@ -179,7 +192,7 @@ class QueueService {
               console.warn(
                 `⚠️ Attempt ${error.attemptNumber} failed for ${token} at ${timestamp}: ${error.message}`
               );
-            }
+            },
           }
         );
 
@@ -194,9 +207,9 @@ class QueueService {
             priceUsd: priceData.priceUsd,
             volume24h: priceData.volume24h,
             marketCap: priceData.marketCap,
-            source: 'alchemy',
+            source: "alchemy",
             confidence: 1,
-            metadata: priceData.metadata
+            metadata: priceData.metadata,
           });
 
           await priceRecord.save();
@@ -230,12 +243,12 @@ class QueueService {
         volume24h: Math.random() * 1000000,
         marketCap: Math.random() * 1000000000,
         metadata: {
-          source: 'mock',
-          timestamp: timestamp
-        }
+          source: "mock",
+          timestamp: timestamp,
+        },
       };
     } catch (error) {
-      console.error('Error fetching historical price:', error);
+      console.error("Error fetching historical price:", error);
       throw error;
     }
   }
@@ -243,7 +256,7 @@ class QueueService {
   // Get job status
   async getJobStatus(jobId) {
     if (!this.priceQueue) {
-      throw new Error('Queue not initialized');
+      throw new Error("Queue not initialized");
     }
 
     try {
@@ -267,10 +280,10 @@ class QueueService {
           ? new Date(job.finishedOn).toISOString()
           : null,
         failedReason: job.failedReason,
-        returnvalue: job.returnvalue
+        returnvalue: job.returnvalue,
       };
     } catch (error) {
-      console.error('Error getting job status:', error);
+      console.error("Error getting job status:", error);
       throw error;
     }
   }
@@ -278,7 +291,7 @@ class QueueService {
   // Get all jobs
   async getAllJobs(options = {}) {
     if (!this.priceQueue) {
-      throw new Error('Queue not initialized');
+      throw new Error("Queue not initialized");
     }
 
     try {
@@ -293,7 +306,7 @@ class QueueService {
         );
       } else {
         jobs = await this.priceQueue.getJobs(
-          ['waiting', 'active', 'completed', 'failed'],
+          ["waiting", "active", "completed", "failed"],
           offset,
           offset + limit - 1
         );
@@ -304,11 +317,11 @@ class QueueService {
         name: job.name,
         data: job.data,
         progress: job.progress,
-        state: job.opts.delay ? 'delayed' : 'waiting', // Simplified state
-        createdAt: new Date(job.timestamp).toISOString()
+        state: job.opts.delay ? "delayed" : "waiting", // Simplified state
+        createdAt: new Date(job.timestamp).toISOString(),
       }));
     } catch (error) {
-      console.error('Error getting all jobs:', error);
+      console.error("Error getting all jobs:", error);
       throw error;
     }
   }
@@ -316,7 +329,7 @@ class QueueService {
   // Cancel job
   async cancelJob(jobId) {
     if (!this.priceQueue) {
-      throw new Error('Queue not initialized');
+      throw new Error("Queue not initialized");
     }
 
     try {
@@ -329,7 +342,7 @@ class QueueService {
       await job.remove();
       return true;
     } catch (error) {
-      console.error('Error cancelling job:', error);
+      console.error("Error cancelling job:", error);
       throw error;
     }
   }
@@ -337,7 +350,7 @@ class QueueService {
   // Get queue statistics
   async getQueueStats() {
     if (!this.priceQueue) {
-      return { error: 'Queue not initialized' };
+      return { error: "Queue not initialized" };
     }
 
     try {
@@ -352,10 +365,10 @@ class QueueService {
         completed: completed.length,
         failed: failed.length,
         total:
-          waiting.length + active.length + completed.length + failed.length
+          waiting.length + active.length + completed.length + failed.length,
       };
     } catch (error) {
-      console.error('Error getting queue stats:', error);
+      console.error("Error getting queue stats:", error);
       return { error: error.message };
     }
   }
@@ -375,7 +388,7 @@ class QueueService {
 
       return !stats.error;
     } catch (error) {
-      console.error('Queue health check failed:', error);
+      console.error("Queue health check failed:", error);
       return false;
     }
   }
@@ -387,11 +400,11 @@ class QueueService {
     }
 
     try {
-      await this.priceQueue.clean(24 * 60 * 60 * 1000, 1000, 'completed'); // Clean completed jobs older than 24 hours
-      await this.priceQueue.clean(7 * 24 * 60 * 60 * 1000, 100, 'failed'); // Clean failed jobs older than 7 days
-      console.log('🧹 Queue cleanup completed');
+      await this.priceQueue.clean(24 * 60 * 60 * 1000, 1000, "completed"); // Clean completed jobs older than 24 hours
+      await this.priceQueue.clean(7 * 24 * 60 * 60 * 1000, 100, "failed"); // Clean failed jobs older than 7 days
+      console.log("🧹 Queue cleanup completed");
     } catch (error) {
-      console.error('Error during queue cleanup:', error);
+      console.error("Error during queue cleanup:", error);
     }
   }
 
@@ -400,20 +413,20 @@ class QueueService {
     try {
       if (this.worker) {
         await this.worker.close();
-        console.log('👷 Worker shut down gracefully');
+        console.log("👷 Worker shut down gracefully");
       }
 
       if (this.priceQueue) {
         await this.priceQueue.close();
-        console.log('📋 Queue closed gracefully');
+        console.log("📋 Queue closed gracefully");
       }
 
       if (this.connection) {
         await this.connection.quit();
-        console.log('🔌 Queue Redis connection closed');
+        console.log("🔌 Queue Redis connection closed");
       }
     } catch (error) {
-      console.error('Error during queue shutdown:', error);
+      console.error("Error during queue shutdown:", error);
     }
   }
 }
