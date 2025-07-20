@@ -28,8 +28,15 @@ async function initializeConnections() {
     // Connect to MongoDB
     await databaseConnection.connect();
 
-    // Connect to Redis
-    await redisConnection.connect();
+    // Connect to Redis (optional)
+    try {
+      await redisConnection.connect();
+    } catch (error) {
+      console.warn(
+        "⚠️ Redis connection failed, continuing without cache:",
+        error
+      );
+    }
 
     // Initialize Alchemy SDK
     alchemyConnection.initialize();

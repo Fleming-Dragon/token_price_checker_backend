@@ -15,15 +15,26 @@ class QueueService {
       // Create Redis connection for BullMQ using environment variables
       // Always use the hosted Redis configuration from environment
       const connectionConfig = {
-        host: process.env.REDIS_HOST || process.env.BULLMQ_REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || process.env.BULLMQ_REDIS_PORT) || 6379,
-        password: process.env.REDIS_PASSWORD || process.env.BULLMQ_REDIS_PASSWORD || undefined,
+        host:
+          process.env.REDIS_HOST ||
+          process.env.BULLMQ_REDIS_HOST ||
+          "localhost",
+        port:
+          parseInt(process.env.REDIS_PORT || process.env.BULLMQ_REDIS_PORT) ||
+          6379,
+        password:
+          process.env.REDIS_PASSWORD ||
+          process.env.BULLMQ_REDIS_PASSWORD ||
+          undefined,
         maxRetriesPerRequest: 3,
         retryDelayOnFailover: 100,
         connectTimeout: 10000,
         commandTimeout: 5000,
         // Enable TLS for hosted Redis (Render Redis uses TLS)
-        tls: (process.env.REDIS_URL && process.env.REDIS_URL.startsWith('rediss://')) ? {} : undefined
+        tls:
+          process.env.REDIS_URL && process.env.REDIS_URL.startsWith("rediss://")
+            ? {}
+            : undefined,
       };
 
       // Create Redis connection

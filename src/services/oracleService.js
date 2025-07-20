@@ -1,8 +1,8 @@
-const TokenPrice = require('../models/TokenPrice');
-const redisConnection = require('../config/redis');
-const interpolationService = require('./interpolationService');
-const alchemyConnection = require('../config/alchemy');
-const moment = require('moment');
+const TokenPrice = require("../models/TokenPrice");
+const redisConnection = require("../config/redis");
+const interpolationService = require("./interpolationService");
+const alchemyConnection = require("../config/alchemy");
+const moment = require("moment");
 
 class OracleService {
   constructor() {
@@ -13,9 +13,18 @@ class OracleService {
   async initialize() {
     try {
       this.cacheClient = redisConnection.getClient();
-      console.log('🎯 Oracle service initialized');
+      console.log("🎯 Oracle service initialized");
+
+      // Log cache status
+      if (this.cacheClient) {
+        console.log("✅ Cache (Redis) is available");
+      } else {
+        console.log(
+          "⚠️ Cache (Redis) is not available - running without cache"
+        );
+      }
     } catch (error) {
-      console.error('❌ Oracle service initialization failed:', error);
+      console.error("❌ Oracle service initialization failed:", error);
       throw error;
     }
   }
@@ -38,7 +47,7 @@ class OracleService {
           );
           return {
             ...cachedPrice,
-            source: 'cache'
+            source: "cache",
           };
         }
       }
@@ -47,7 +56,7 @@ class OracleService {
       const existingPrice = await TokenPrice.findOne({
         token: token.toLowerCase(),
         network: network.toLowerCase(),
-        timestamp: timestamp
+        timestamp: timestamp,
       });
 
       if (existingPrice) {
@@ -61,7 +70,7 @@ class OracleService {
           timestamp: existingPrice.timestamp,
           price: existingPrice.price,
           source: existingPrice.source,
-          confidence: existingPrice.confidence || 1
+          confidence: existingPrice.confidence || 1,
         };
 
         // Cache the result
@@ -93,9 +102,9 @@ class OracleService {
             timestamp: timestamp,
             price: alchemyPrice.price,
             priceUsd: alchemyPrice.priceUsd,
-            source: 'alchemy',
+            source: "alchemy",
             confidence: 1,
-            metadata: alchemyPrice.metadata
+            metadata: alchemyPrice.metadata,
           });
 
           await priceRecord.save();
@@ -106,8 +115,8 @@ class OracleService {
             timestamp: timestamp,
             price: alchemyPrice.price,
             priceUsd: alchemyPrice.priceUsd,
-            source: 'alchemy',
-            confidence: 1
+            source: "alchemy",
+            confidence: 1,
           };
 
           // Cache the result
@@ -138,14 +147,14 @@ class OracleService {
           network: network.toLowerCase(),
           timestamp: timestamp,
           price: interpolatedPrice.price,
-          source: 'interpolated',
+          source: "interpolated",
           confidence: interpolatedPrice.confidence,
           interpolation: {
             beforePrice: interpolatedPrice.beforePrice,
             afterPrice: interpolatedPrice.afterPrice,
             beforeTimestamp: interpolatedPrice.beforeTimestamp,
-            afterTimestamp: interpolatedPrice.afterTimestamp
-          }
+            afterTimestamp: interpolatedPrice.afterTimestamp,
+          },
         };
 
         // Cache the interpolated result with shorter TTL
@@ -165,7 +174,7 @@ class OracleService {
         `No price data found for ${token} on ${network} at timestamp ${timestamp}`
       );
     } catch (error) {
-      console.error('Error in getTokenPriceAtTimestamp:', error);
+      console.error("Error in getTokenPriceAtTimestamp:", error);
       throw error;
     }
   }
@@ -193,17 +202,17 @@ class OracleService {
       );
 
       // Queue the job
-      const queueService = require('./queueService');
+      const queueService = require("./queueService");
       const job = await queueService.addPriceCollectionJob({
         token,
         network,
         timestamps,
-        creationTimestamp
+        creationTimestamp,
       });
 
       return job;
     } catch (error) {
-      console.error('Error in scheduleHistoricalDataCollection:', error);
+      console.error("Error in scheduleHistoricalDataCollection:", error);
       throw error;
     }
   }
@@ -219,7 +228,7 @@ class OracleService {
     } catch (error) {
       console.error(`Error getting creation timestamp for ${token}:`, error);
       // Fallback: use a default timestamp (e.g., Ethereum launch)
-      return network.toLowerCase() === 'ethereum' ? 1438269960 : 1590824707; // ETH: Jul 30, 2015; Polygon: May 30, 2020
+      return network.toLowerCase() === "ethereum" ? 1438269960 : 1590824707; // ETH: Jul 30, 2015; Polygon: May 30, 2020
     }
   }
 
@@ -229,11 +238,11 @@ class OracleService {
     const start = moment.unix(startTimestamp);
     const end = moment();
 
-    let current = start.clone().startOf('day');
+    let current = start.clone().startOf("day");
 
     while (current.isSameOrBefore(end)) {
       timestamps.push(current.unix());
-      current.add(1, 'day');
+      current.add(1, "day");
     }
 
     return timestamps;
@@ -244,7 +253,7 @@ class OracleService {
     try {
       // For development, let's implement a simple fallback price mechanism
       console.log(`🔍 Attempting to fetch price for ${token} on ${network}`);
-      
+
       // First try to get current price and extrapolate
       const currentPrice = await this.getCurrentPrice(token, network);
       if (currentPrice) {
@@ -252,27 +261,26 @@ class OracleService {
         const now = Math.floor(Date.now() / 1000);
         const timeDiff = now - timestamp;
         const daysDiff = timeDiff / (24 * 60 * 60);
-        
+
         // Add some realistic price variation (±5% per day max)
         const variation = Math.sin(daysDiff) * 0.05 * Math.random();
         const historicalPrice = currentPrice * (1 + variation);
-        
+
         return {
           price: Math.max(0.0001, historicalPrice),
           priceUsd: Math.max(0.0001, historicalPrice),
           metadata: {
-            method: 'current_price_extrapolation',
+            method: "current_price_extrapolation",
             daysDiff: daysDiff,
-            variation: variation
-          }
+            variation: variation,
+          },
         };
       }
-      
+
       // Fallback to mock data for known tokens
       return this.getMockPriceData(token, network, timestamp);
-      
     } catch (error) {
-      console.error('Error fetching price from external APIs:', error);
+      console.error("Error fetching price from external APIs:", error);
       return this.getMockPriceData(token, network, timestamp);
     }
   }
@@ -282,19 +290,19 @@ class OracleService {
     try {
       // For demo purposes, return mock current prices for known tokens
       const mockPrices = {
-        '0xa0b86a33e6441f8c29e8a34b6c55f738c68c3aaa': 1.001, // USDC (the one being tested)
-        '0xa0b86a33e6441e2edbe8f672dd33f01c258c1b07': 1.001, // Example Token
-        '0xdac17f958d2ee523a2206206994597c13d831ec7': 1.000, // USDT  
-        '0x6b175474e89094c44da98b954eedeac495271d0f': 1.001, // DAI
-        '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 3200.50, // WETH
-        '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984': 12.34, // UNI
-        '0x514910771af9ca656af840dff83e8264ecf986ca': 18.75, // LINK
+        "0xa0b86a33e6441f8c29e8a34b6c55f738c68c3aaa": 1.001, // USDC (the one being tested)
+        "0xa0b86a33e6441e2edbe8f672dd33f01c258c1b07": 1.001, // Example Token
+        "0xdac17f958d2ee523a2206206994597c13d831ec7": 1.0, // USDT
+        "0x6b175474e89094c44da98b954eedeac495271d0f": 1.001, // DAI
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": 3200.5, // WETH
+        "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984": 12.34, // UNI
+        "0x514910771af9ca656af840dff83e8264ecf986ca": 18.75, // LINK
       };
-      
+
       const lowerToken = token.toLowerCase();
       return mockPrices[lowerToken] || null;
     } catch (error) {
-      console.error('Error getting current price:', error);
+      console.error("Error getting current price:", error);
       return null;
     }
   }
@@ -303,23 +311,23 @@ class OracleService {
   async getMockPriceData(token, network, timestamp) {
     const mockPrices = {
       ethereum: {
-        '0xa0b86a33e6441f8c29e8a34b6c55f738c68c3aaa': 1.001, // USDC (the one being tested)
-        '0xa0b86a33e6441e2edbe8f672dd33f01c258c1b07': 1.001, // Example Token
-        '0xdac17f958d2ee523a2206206994597c13d831ec7': 1.000, // USDT
-        '0x6b175474e89094c44da98b954eedeac495271d0f': 1.001, // DAI  
-        '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 2847.32, // WETH (Jan 2024 price)
-        '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984': 8.67, // UNI
-        '0x514910771af9ca656af840dff83e8264ecf986ca': 14.23, // LINK
+        "0xa0b86a33e6441f8c29e8a34b6c55f738c68c3aaa": 1.001, // USDC (the one being tested)
+        "0xa0b86a33e6441e2edbe8f672dd33f01c258c1b07": 1.001, // Example Token
+        "0xdac17f958d2ee523a2206206994597c13d831ec7": 1.0, // USDT
+        "0x6b175474e89094c44da98b954eedeac495271d0f": 1.001, // DAI
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": 2847.32, // WETH (Jan 2024 price)
+        "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984": 8.67, // UNI
+        "0x514910771af9ca656af840dff83e8264ecf986ca": 14.23, // LINK
       },
       polygon: {
-        '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': 1.000, // USDC on Polygon
-        '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': 1.001, // DAI on Polygon
-      }
+        "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": 1.0, // USDC on Polygon
+        "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063": 1.001, // DAI on Polygon
+      },
     };
 
     const networkPrices = mockPrices[network?.toLowerCase()];
     const basePrice = networkPrices?.[token?.toLowerCase()];
-    
+
     if (!basePrice) {
       console.log(`⚠️ No mock data for token ${token} on ${network}`);
       return null;
@@ -328,60 +336,61 @@ class OracleService {
     // Add some historical variation
     const now = Math.floor(Date.now() / 1000);
     const timeDiff = now - timestamp;
-    const variation = (Math.sin(timeDiff / 86400) * 0.1 + Math.random() * 0.05 - 0.025);
+    const variation =
+      Math.sin(timeDiff / 86400) * 0.1 + Math.random() * 0.05 - 0.025;
     const price = Math.max(0.0001, basePrice + variation);
 
     console.log(`✅ Mock price generated: ${price} for ${token}`);
-    
+
     return {
       price: Number(price.toFixed(8)),
       priceUsd: Number(price.toFixed(8)),
       metadata: {
-        method: 'mock_data',
+        method: "mock_data",
         basePrice: basePrice,
         variation: variation,
-        timestamp: timestamp
-      }
+        timestamp: timestamp,
+      },
     };
   }
 
   // Get system health status
   async getHealthStatus() {
     const health = {
-      overall: 'healthy',
+      overall: "healthy",
       timestamp: new Date().toISOString(),
-      components: {}
+      components: {},
     };
 
     try {
       // Check Redis connection
       if (this.cacheClient) {
-        await redisConnection.get('health_check');
-        health.components.redis = 'healthy';
+        await redisConnection.get("health_check");
+        health.components.redis = "healthy";
       } else {
-        health.components.redis = 'unhealthy';
-        health.overall = 'degraded';
+        health.components.redis = "unhealthy";
+        health.overall = "degraded";
       }
 
       // Check MongoDB connection
       const dbHealth = await this.checkDatabaseHealth();
-      health.components.mongodb = dbHealth ? 'healthy' : 'unhealthy';
-      if (!dbHealth) health.overall = 'degraded';
+      health.components.mongodb = dbHealth ? "healthy" : "unhealthy";
+      if (!dbHealth) health.overall = "degraded";
 
       // Check Alchemy connection
       const alchemyHealth = alchemyConnection.getConnectionStatus();
       health.components.alchemy = alchemyHealth.isConfigured
-        ? 'healthy'
-        : 'degraded';
+        ? "healthy"
+        : "degraded";
 
       // Check queue service
-      const queueService = require('./queueService');
+      const queueService = require("./queueService");
       const queueHealth = await queueService.getHealthStatus();
-      health.components.queue = queueHealth ? 'healthy' : 'unhealthy';
-      if (!queueHealth) health.overall = 'degraded';
+      health.components.queue = queueHealth ? "healthy" : "unhealthy";
+      if (!queueHealth) health.overall = "degraded";
     } catch (error) {
-      console.error('Health check error:', error);
-      health.overall = 'unhealthy';
+      console.error("Health check error:", error);
+      health.overall = "unhealthy";
       health.error = error.message;
     }
 
@@ -405,16 +414,16 @@ class OracleService {
         timestamp: new Date().toISOString(),
         database: {
           totalPrices: await TokenPrice.countDocuments(),
-          uniqueTokens: await TokenPrice.distinct('token').then(
+          uniqueTokens: await TokenPrice.distinct("token").then(
             (tokens) => tokens.length
           ),
-          networks: await TokenPrice.distinct('network'),
+          networks: await TokenPrice.distinct("network"),
           latestUpdate: await TokenPrice.findOne()
             .sort({ updatedAt: -1 })
-            .select('updatedAt')
+            .select("updatedAt"),
         },
         cache: {},
-        queue: {}
+        queue: {},
       };
 
       // Cache stats
@@ -423,12 +432,12 @@ class OracleService {
       }
 
       // Queue stats
-      const queueService = require('./queueService');
+      const queueService = require("./queueService");
       stats.queue = await queueService.getQueueStats();
 
       return stats;
     } catch (error) {
-      console.error('Error getting system stats:', error);
+      console.error("Error getting system stats:", error);
       throw error;
     }
   }

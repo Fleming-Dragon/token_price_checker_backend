@@ -13,8 +13,19 @@ class RedisConnection {
     }
 
     try {
-      // Check if we have a Redis URL (for hosted services with SSL)
+      // Check if Redis is available or required
       const redisUrl = process.env.REDIS_URL;
+      const redisRequired = process.env.REDIS_REQUIRED !== "false";
+
+      // If no Redis URL and Redis is not required, skip Redis setup
+      if (!redisUrl && !redisRequired) {
+        console.log(
+          "⚠️ Redis not configured - running without cache (performance may be impacted)"
+        );
+        this.client = null;
+        this.isConnected = false;
+        return null;
+      }
 
       let redisConfig;
 
@@ -57,6 +68,10 @@ class RedisConnection {
       this.client.on("error", (error) => {
         console.error("❌ Redis connection error:", error);
         this.isConnected = false;
+        // Don't crash the app if Redis is optional
+        if (!redisRequired) {
+          console.warn("⚠️ Redis is optional - continuing without cache");
+        }
       });
 
       this.client.on("close", () => {
@@ -68,12 +83,33 @@ class RedisConnection {
         console.log("🔄 Redis reconnecting...");
       });
 
-      // Connect to Redis
-      await this.client.connect();
+      // Connect to Redis with error handling
+      try {
+        await this.client.connect();
+      } catch (error) {
+        console.error("❌ Redis connection failed:", error);
+        if (!redisRequired) {
+          console.warn(
+            "⚠️ Running without Redis cache - performance may be impacted"
+          );
+          this.client = null;
+          this.isConnected = false;
+          return null;
+        } else {
+          throw error;
+        }
+      }
 
       return this.client;
     } catch (error) {
-      console.error("❌ Redis connection failed:", error);
+      console.error("❌ Redis setup failed:", error);
+      // If Redis is optional, continue without it
+      if (process.env.REDIS_REQUIRED !== "true") {
+        console.warn("⚠️ Continuing without Redis cache");
+        this.client = null;
+        this.isConnected = false;
+        return null;
+      }
       throw error;
     }
   }
@@ -101,49 +137,79 @@ class RedisConnection {
   // Cache helper methods
   async set(key, value, ttl = null) {
     if (!this.client || !this.isConnected) {
-      throw new Error("Redis client not connected");
+      console.warn("⚠️ Redis not available, skipping cache set");
+      return null;
     }
 
-    const serializedValue = JSON.stringify(value);
+    try {
+      const serializedValue = JSON.stringify(value);
 
-    if (ttl) {
-      return await this.client.setex(key, ttl, serializedValue);
-    } else {
-      return await this.client.set(key, serializedValue);
+      if (ttl) {
+        return this.client.setex(key, ttl, serializedValue);
+      } else {
+        return this.client.set(key, serializedValue);
+      }
+    } catch (error) {
+      console.warn("⚠️ Redis set operation failed:", error);
+      return null;
     }
   }
 
   async get(key) {
     if (!this.client || !this.isConnected) {
-      throw new Error("Redis client not connected");
+      console.warn("⚠️ Redis not available, skipping cache get");
+      return null;
     }
 
-    const value = await this.client.get(key);
-    return value ? JSON.parse(value) : null;
+    try {
+      const value = await this.client.get(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      console.warn("⚠️ Redis get operation failed:", error);
+      return null;
+    }
   }
 
   async del(key) {
     if (!this.client || !this.isConnected) {
-      throw new Error("Redis client not connected");
+      console.warn("⚠️ Redis not available, skipping cache delete");
+      return null;
     }
 
-    return await this.client.del(key);
+    try {
+      return this.client.del(key);
+    } catch (error) {
+      console.warn("⚠️ Redis delete operation failed:", error);
+      return null;
+    }
   }
 
   async exists(key) {
     if (!this.client || !this.isConnected) {
-      throw new Error("Redis client not connected");
+      console.warn("⚠️ Redis not available, skipping cache exists check");
+      return false;
     }
 
-    return await this.client.exists(key);
+    try {
+      return this.client.exists(key);
+    } catch (error) {
+      console.warn("⚠️ Redis exists operation failed:", error);
+      return false;
+    }
   }
 
   async flushall() {
     if (!this.client || !this.isConnected) {
-      throw new Error("Redis client not connected");
+      console.warn("⚠️ Redis not available, skipping cache flush");
+      return null;
     }
 
-    return await this.client.flushall();
+    try {
+      return this.client.flushall();
+    } catch (error) {
+      console.warn("⚠️ Redis flush operation failed:", error);
+      return null;
+    }
   }
 
   // Generate cache keys
