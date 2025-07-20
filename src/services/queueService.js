@@ -12,27 +12,25 @@ class QueueService {
 
   async initialize() {
     try {
-      // Create Redis connection for BullMQ
-      const redisUrl = process.env.REDIS_URL;
+      // Create Redis connection for BullMQ using environment variables
+      // Always use the hosted Redis configuration from environment
+      const connectionConfig = {
+        host: process.env.REDIS_HOST || process.env.BULLMQ_REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || process.env.BULLMQ_REDIS_PORT) || 6379,
+        password: process.env.REDIS_PASSWORD || process.env.BULLMQ_REDIS_PASSWORD || undefined,
+        maxRetriesPerRequest: 3,
+        retryDelayOnFailover: 100,
+        connectTimeout: 10000,
+        commandTimeout: 5000,
+        // Enable TLS for hosted Redis (Render Redis uses TLS)
+        tls: (process.env.REDIS_URL && process.env.REDIS_URL.startsWith('rediss://')) ? {} : undefined
+      };
 
-      if (redisUrl) {
-        // Use the full URL for hosted services (supports SSL)
-        this.connection = new Redis(redisUrl, {
-          maxRetriesPerRequest: 3,
-          retryDelayOnFailover: 100,
-          // Enable TLS for rediss:// URLs
-          tls: redisUrl.startsWith("rediss://") ? {} : undefined,
-        });
-      } else {
-        // Fallback to individual config parameters for local development
-        this.connection = new Redis({
-          host: process.env.BULLMQ_REDIS_HOST || "localhost",
-          port: parseInt(process.env.BULLMQ_REDIS_PORT) || 6379,
-          password: process.env.BULLMQ_REDIS_PASSWORD || undefined,
-          maxRetriesPerRequest: 3,
-          retryDelayOnFailover: 100,
-        });
-      }
+      // Create Redis connection
+      this.connection = new Redis(connectionConfig);
+
+      // Wait for connection to be established
+      await this.connection.ping();
 
       // Create price collection queue
       this.priceQueue = new Queue("price-collection", {
